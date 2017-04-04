@@ -1,3 +1,0 @@
-package highload_server
-
-
