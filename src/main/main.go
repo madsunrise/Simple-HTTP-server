@@ -8,9 +8,7 @@ import (
 	"strings"
 	"bytes"
 	"time"
-
-	"io/ioutil"
-	"os"
+	"net/url"
 )
 
 
@@ -54,7 +52,6 @@ func handleConnection(conn net.Conn) {
 		}
 	}
 
-	println("Start parsing data...")
 	response := parseInputData(input.String())
 	conn.Write(response)
 }
@@ -70,13 +67,14 @@ func isMethodAllowed(method string) (bool)  {
 }
 
 func parseInputData(input string) ([]byte) {
-	var infoLine = strings.Split(input, "\r\n")[0]
+	var infoLine= strings.Split(input, "\r\n")[0]
 
-	var splitLine = strings.Split(infoLine, " ")
+	var splitLine= strings.Split(infoLine, " ")
 
+	decoded_url, _ := url.QueryUnescape(splitLine[1])
 	userRequest := request{
-		method: splitLine[0],
-		url: splitLine[1],
+		method:   splitLine[0],
+		url:      decoded_url,
 		protocol: splitLine[2],
 	}
 
@@ -86,39 +84,40 @@ func parseInputData(input string) ([]byte) {
 
 	var file File
 
-
 	if !isMethodAllowed(userRequest.method) {
 		response.WriteString("405 Method Not Allowed")
 		response.WriteString("\r\n")
 		response.WriteString("Allow: GET, HEAD")
 		response.WriteString("\r\n")
 
-	} else if (strings.Compare(userRequest.method, "GET") == 0) {
-		file = GetFile(userRequest.url)
+	} else {
+		head := strings.Compare(userRequest.method, "HEAD") == 0;
+		file = GetFile(userRequest.url, head)
 		switch file.status {
-			case 200:
-				{
-					response.WriteString("200 OK\r\n")
-					response.WriteString("Content-Type: image/jpeg\r\n")
-					response.WriteString("Content-Length: " +
-						strconv.Itoa(file.length) + "\r\n")
-					break
-				}
+		case 200:
+			{
+				response.WriteString("200 OK\r\n")
+				response.WriteString("Content-Type: " +
+					file.content_type + "\r\n")
+				response.WriteString("Content-Length: " +
+					strconv.Itoa(file.length) + "\r\n")
+				break
+			}
 
-			case 403:
-				{
-					response.WriteString("403 Forbidden\r\n")
-					break
-				}
+		case 403:
+			{
+				response.WriteString("403 Forbidden\r\n")
+				break
+			}
 
-			case 404:
-				{
-					response.WriteString("404 File Not Found\r\n")
-					break
-				}
-			default: break
+		case 404:
+			{
+				response.WriteString("404 File Not Found\r\n")
+				break
+			}
+		default:
+			break
 		}
-
 	}
 
 	// Дописываем хедеры
@@ -129,82 +128,10 @@ func parseInputData(input string) ([]byte) {
 	response.WriteString("Connection: Close")
 	response.WriteString("\r\n")
 	response.WriteString("\r\n")
-	// content-type?
-
-
 
 	if (file.status == 200) {
 		response.Write(file.content)
 	}
 
-
-
 	return response.Bytes()
 }
-
-
-type File struct {
-	status int
-	length int
-	content_type string
-	content []byte
-}
-
-var ROOT_PATH = "./DOCUMENT_ROOT/"
-
-func GetFile(url string) (File) {
-	if strings.Contains(url, "../") {
-		return File {
-			403,
-			0,
-			"",
-			nil,
-		}
-	}
-
-	request_path := ROOT_PATH + url;
-	info, err := os.Stat(request_path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return File{
-				404,
-				0,
-				"",
-				nil,
-			}
-		} else {
-			return File{
-				403,
-				0,
-				"",
-				nil,
-			}
-		}
-	}
-
-
-
-	file, err := ioutil.ReadFile(request_path)
-	if err != nil {
-		return File{
-			403,
-			0,
-			"",
-			nil,
-		}
-	}
-
-	return File {
-		200,
-		int(info.Size()),
-		"image/jpeg",
-		file,
-	}
-}
-
-
-
-
-
-
-
